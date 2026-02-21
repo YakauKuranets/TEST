@@ -5,13 +5,18 @@
 
 from __future__ import annotations
 import os
-import cv2
+try:
+    import cv2
+except Exception:  # pragma: no cover
+    cv2 = None
 import logging
 import io
+import base64
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Depends
 from pydantic import BaseModel
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 try:
     from celery.result import AsyncResult
@@ -23,7 +28,37 @@ except Exception:  # pragma: no cover - celery is optional in desktop bundle
 
 from app.api.response import success_response
 from app.core.video_engine import LocalVideoEngine
+from app.core.models_config import iter_models
 from app.models.forensic import ForensicHypothesisEngine
+
+
+if cv2 is None:  # pragma: no cover
+    class _Cv2Shim:
+        COLOR_RGB2BGR = 0
+        COLOR_BGR2RGB = 1
+
+        @staticmethod
+        def cvtColor(arr, code):
+            if code in {_Cv2Shim.COLOR_RGB2BGR, _Cv2Shim.COLOR_BGR2RGB}:
+                return arr[..., ::-1]
+            return arr
+
+        @staticmethod
+        def imread(path):
+            from PIL import Image
+            import numpy as _np
+            try:
+                return _np.array(Image.open(path).convert("RGB"))[..., ::-1]
+            except Exception:
+                return None
+
+        @staticmethod
+        def imwrite(path, arr):
+            from PIL import Image
+            Image.fromarray(arr[..., ::-1]).save(path)
+            return True
+
+    cv2 = _Cv2Shim()
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,6 +90,12 @@ class TemporalRequest(BaseModel):
 class PropagateRequest(BaseModel):
     file_path: str
     start_frame_time: float
+
+
+class DeblurBase64Request(BaseModel):
+    base64_image: str
+    length: int
+    angle: float = 0.0
 
 
 PRESET_DEFAULTS: Dict[str, Dict[str, Dict[str, Any]]] = {
@@ -291,15 +332,46 @@ async def api_generate_hypotheses(req: VideoJobRequest, request: Request):
 
 @router.get("/system/models-status")
 async def get_models_status(request: Request):
-    registry = forensic_engine.model_registry
-    status_map = {}
-    for key, filename in registry.items():
-        status_map[key] = {
-            "exists": forensic_engine._is_model_ready(key),
-            "is_loaded": key in forensic_engine.active_models,
-            "filename": filename
-        }
-    return success_response(request, status="done", result=status_map)
+    models_root = Path(r"D:\PLAYE\models")
+    status_map: Dict[str, bool] = {}
+    for _category, model in iter_models():
+        status_map[model["id"]] = os.path.exists(models_root / model["file"])
+    return status_map
+
+
+@router.post("/ai/deblur")
+async def api_deblur_base64(payload: DeblurBase64Request):
+    from app.models.forensic import wiener_deconvolution
+
+    try:
+        img_bytes = base64.b64decode(payload.base64_image)
+        img = _read_upload_image(img_bytes)
+        result = wiener_deconvolution(img, length=int(payload.length), angle=float(payload.angle))
+        buf = _numpy_to_png_stream(result)
+        return {"result": base64.b64encode(buf.getvalue()).decode("ascii")}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/forensic/deblur")
+async def forensic_deblur_json(payload: DeblurBase64Request):
+    from app.models.forensic import wiener_deconvolution
+
+    if payload.length < 1:
+        raise HTTPException(status_code=422, detail="length must be >= 1")
+
+    try:
+        img_bytes = base64.b64decode(payload.base64_image)
+        img = _read_upload_image(img_bytes)
+        result = wiener_deconvolution(img, length=int(payload.length), angle=float(payload.angle))
+        buf = _numpy_to_png_stream(result)
+        return {"result": base64.b64encode(buf.getvalue()).decode("ascii")}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @router.get("/jobs/{task_id}")
 async def get_job_status(request: Request, task_id: str):
@@ -313,7 +385,6 @@ async def get_job_status(request: Request, task_id: str):
 from fastapi import File, UploadFile, Form
 from PIL import Image
 import numpy as np
-import base64
 
 
 def _read_upload_image(file_bytes: bytes) -> np.ndarray:
@@ -343,14 +414,14 @@ async def forensic_deblur(
     Killer Feature #1: Motion Blur Fixer.
     Wiener deconvolution to recover text/plates from motion-blurred frames.
     """
-    from app.models.forensic import apply_blind_deconvolution
+    from app.models.forensic import wiener_deconvolution
 
     try:
         raw = await file.read()
         img = _read_upload_image(raw)
         intensity = max(1, min(100, intensity))
         angle = float(max(-180.0, min(180.0, angle)))
-        result = apply_blind_deconvolution(img, intensity=intensity, angle=angle)
+        result = wiener_deconvolution(img, length=intensity, angle=angle)
         buf = _numpy_to_png_stream(result)
         image_base64 = base64.b64encode(buf.getvalue()).decode("ascii")
         return success_response(request, status="done", result={

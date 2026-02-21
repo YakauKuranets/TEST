@@ -18,6 +18,7 @@ import { createClipBlueprint } from "./blueprints/clip.js";
 import { createAdvancedTimelineBlueprint } from "./blueprints/advancedTimeline.js";
 import { createMotionTrackingAndEffectsBlueprint } from "./blueprints/motionTrackingAndEffects.js";
 import { createAiHubBlueprint } from "./blueprints/aiHub.js";
+import { bindWienerDeblur } from "./wiener.js";
 
 // Helper: safe getElementById (returns element or null without crash)
 const $id = (id) => document.getElementById(id);
@@ -247,6 +248,20 @@ const api = {
     const resp = await fetch(API('/api/system/models-status'));
     const data = await resp.json();
     return Boolean(data?.[modelId]);
+  },
+  applyWienerDeblur: async (base64Image, length, angle) => {
+    const resp = await fetch(API('/api/forensic/deblur'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64_image: base64Image, length: Number(length), angle: Number(angle) }),
+    });
+    if (!resp.ok) {
+      const payload = await resp.json().catch(() => ({}));
+      throw new Error(payload?.detail || payload?.error || `HTTP ${resp.status}`);
+    }
+    const payload = await resp.json();
+    if (!payload?.result) throw new Error('Ответ API не содержит result');
+    return payload.result;
   }
 };
 
@@ -659,7 +674,6 @@ window.addEventListener('DOMContentLoaded', () => {
   elements.trackStartBtn?.addEventListener('click', () => actions.toggleAutoZoom());
 
   // Killer features
-  elements.blurFixBtn?.addEventListener('click', () => actions.runMotionBlurFix());
   elements.elaBtn?.addEventListener('click', () => actions.runELA());
   elements.autoAnalyzeBtn?.addEventListener('click', () => actions.runAutoAnalyze());
 
@@ -786,6 +800,8 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   };
   wireStabilization();
+
+  bindWienerDeblur({ elements, state, actions, api });
 
   // ColorGrading wiring — exposure/contrast/etc sliders already in quality blueprint
   // The colorGrading engine provides apply() for canvas pipeline integration

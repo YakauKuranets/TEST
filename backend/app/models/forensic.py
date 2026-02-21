@@ -141,52 +141,62 @@ class ForensicHypothesisEngine:
         }
 
 
-# ═══════════════════════════════════════════════════════════════
-# KILLER FEATURE #1: Motion Blur Fixer (Wiener Deconvolution)
-# ═══════════════════════════════════════════════════════════════
-def apply_blind_deconvolution(image_np: np.ndarray, intensity: int = 50, angle: float = 0.0) -> np.ndarray:
-    """Remove motion blur using Wiener filter in frequency domain."""
-    gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY) if len(image_np.shape) == 3 else image_np
 
-    # Estimate motion blur kernel (PSF)
-    kernel_size = max(3, int(intensity * 0.4))
+def wiener_deconvolution(image_np: np.ndarray, length: int = 15, angle: float = 0.0, nsr: float = 0.02) -> np.ndarray:
+    """Wiener deconvolution for motion blur restoration."""
+    length = int(length)
+    if length < 1:
+        raise ValueError("length must be >= 1")
+
+    kernel_size = max(3, length)
     if kernel_size % 2 == 0:
         kernel_size += 1
 
-    # Create directional motion blur kernel
     kernel = np.zeros((kernel_size, kernel_size), dtype=np.float32)
     kernel[kernel_size // 2, :] = 1.0
     if angle:
         rot = cv2.getRotationMatrix2D((kernel_size / 2, kernel_size / 2), float(angle), 1.0)
         kernel = cv2.warpAffine(kernel, rot, (kernel_size, kernel_size), flags=cv2.INTER_LINEAR)
-    kernel /= kernel_size
+    kernel_sum = float(kernel.sum()) or 1.0
+    kernel /= kernel_sum
 
-    # Wiener deconvolution per channel
-    result_channels = []
-    channels = cv2.split(image_np) if len(image_np.shape) == 3 else [gray]
+    channels = cv2.split(image_np) if len(image_np.shape) == 3 else [image_np]
+    restored_channels = []
 
     for ch in channels:
         ch_f = np.float64(ch)
-        # FFT of image and kernel
         img_fft = np.fft.fft2(ch_f)
+
         kernel_padded = np.zeros_like(ch_f)
         ky, kx = kernel.shape
         kernel_padded[:ky, :kx] = kernel
+        kernel_padded = np.roll(kernel_padded, -(ky // 2), axis=0)
+        kernel_padded = np.roll(kernel_padded, -(kx // 2), axis=1)
         kernel_fft = np.fft.fft2(kernel_padded)
 
-        # Wiener filter: H* / (|H|^2 + NSR)
-        nsr = 10.0 / max(1, intensity)  # noise-to-signal ratio
         kernel_conj = np.conj(kernel_fft)
-        wiener = kernel_conj / (np.abs(kernel_fft) ** 2 + nsr)
-
+        wiener = kernel_conj / (np.abs(kernel_fft) ** 2 + float(max(nsr, 1e-8)))
         restored = np.fft.ifft2(img_fft * wiener)
         restored = np.abs(restored)
+        peak = float(restored.max())
+        if peak > 0:
+            restored = restored * (255.0 / peak)
         restored = np.clip(restored, 0, 255).astype(np.uint8)
-        result_channels.append(restored)
+        restored_channels.append(restored)
 
-    if len(result_channels) == 1:
-        return result_channels[0]
-    return cv2.merge(result_channels)
+    if len(restored_channels) == 1:
+        return restored_channels[0]
+    return cv2.merge(restored_channels)
+
+
+# ═══════════════════════════════════════════════════════════════
+# KILLER FEATURE #1: Motion Blur Fixer (Wiener Deconvolution)
+# ═══════════════════════════════════════════════════════════════
+def apply_blind_deconvolution(image_np: np.ndarray, intensity: int = 50, angle: float = 0.0) -> np.ndarray:
+    """Backward-compatible wrapper for Wiener deconvolution."""
+    length = max(1, int(intensity))
+    nsr = 10.0 / max(1, length)
+    return wiener_deconvolution(image_np, length=length, angle=angle, nsr=nsr)
 
 
 # ═══════════════════════════════════════════════════════════════
