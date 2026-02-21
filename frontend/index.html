@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PLAYE Studio Pro | Forensic AI Lab</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ═══ LAUNCHER ═══ -->
+<div id="launcher-screen" class="launcher">
+  <div class="launcher__bg"></div>
+  <div class="launcher__content">
+    <div class="launcher__header">
+      <div class="launcher__logo">
+        <div class="logo-icon">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="2" y="2" width="44" height="44" rx="12" stroke="url(#lg)" stroke-width="2.5"/>
+            <polygon points="19,14 36,24 19,34" fill="url(#lg)"/>
+            <defs><linearGradient id="lg" x1="0" y1="0" x2="48" y2="48"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs>
+          </svg>
+        </div>
+        <div><h1 class="launcher__title">PLAYE Studio Pro</h1><p class="launcher__subtitle">Forensic AI Station v3.0</p></div>
+      </div>
+      <button id="launcher-settings-btn" class="gear-btn" title="Settings">⚙</button>
+    </div>
+    <div class="launcher__cards">
+      <button id="launch-video" class="launcher__card"><div class="card__icon card__icon--video">🎬</div><div class="card__text"><h2>Анализ видео</h2><p>SAM 2, AI-Zoom, Temporal, Стабилизация</p></div><span class="card__arrow">→</span></button>
+      <button id="launch-photo" class="launcher__card"><div class="card__icon card__icon--photo">📷</div><div class="card__text"><h2>Реконструкция</h2><p>RestoreFormer, Deconvolution, Гипотезы</p></div><span class="card__arrow">→</span></button>
+    </div>
+    <div class="launcher__footer">
+      <span class="launcher__version">v3.0.0</span>
+      <span class="launcher__backend-status" id="launcher-backend-status"><span class="status-dot" id="launcher-status-dot"></span> <span id="launcher-status-text">Связь...</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WORKSPACE ═══ -->
+<div id="workspace-screen" class="workspace" style="display:none;">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar__header">
+        <div class="sidebar__top-row">
+          <button id="back-to-menu" class="back-btn">◀</button>
+          <h1 id="workspace-title" class="sidebar__title">Анализатор</h1>
+          <button id="workspace-settings-btn" class="gear-btn">⚙</button>
+        </div>
+        <label class="upload"><input type="file" id="file-input" multiple/><span>📁 Импорт</span></label>
+        <div class="mode-switcher">
+          <button id="mode-video-button" class="mode-btn active">ВИДЕО</button>
+          <button id="mode-photo-button" class="mode-btn">ФОТО</button>
+        </div>
+      </div>
+      <ul id="playlist" class="playlist"></ul>
+      <div style="padding:0 12px;display:flex;gap:6px;margin-top:6px;">
+        <button id="mark-in" class="btn-ghost btn-xs">[ IN</button><span id="clip-in-value" class="mono-sm">—</span>
+        <button id="mark-out" class="btn-ghost btn-xs">OUT ]</button><span id="clip-out-value" class="mono-sm">—</span>
+        <button id="export-clip" class="btn-ghost btn-xs">✂</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="viewer">
+        <div id="viewer-surface" class="viewer__surface">
+          <video id="video" style="display:none;" crossorigin="anonymous"></video>
+          <canvas id="pro-canvas"></canvas>
+          <canvas id="ai-overlay"></canvas>
+          <canvas id="photo-canvas" style="display:none;"></canvas>
+          <canvas id="compare-canvas" style="display:none;"></canvas>
+          <div class="motion-indicator" id="motion-indicator">● LIVE TRACKING</div>
+        </div>
+        <div class="viewer__toolbar video-only" id="video-toolbar">
+          <button id="frame-back" class="tb-btn">◀</button><button id="frame-forward" class="tb-btn">▶</button><span class="tb-sep"></span>
+          <button id="ai-segment-btn" class="tb-btn tb-btn--ai" title="SAM 2" data-requires-model="segment_anything">🎯 Захват</button>
+          <button id="ai-track-start" class="tb-btn tb-btn--ai" title="AI-Zoom" data-requires-model="segment_anything">🔍 AI-Zoom</button>
+          <button id="ai-propagate-btn" class="tb-btn tb-btn--accent" style="display:none;">🚀 Трекинг</button>
+          <span class="tb-sep"></span>
+          <button id="photo-blend" class="tb-btn tb-btn--accent" title="Temporal Enhance">💎 Улучшить</button>
+          <button id="screenshot" class="tb-btn">📸</button>
+        </div>
+        <div class="viewer__toolbar photo-only" id="photo-toolbar" style="display:none;">
+          <input type="file" id="photo-source-input" accept="image/*" style="display:none;"/>
+          <button id="photo-recon" class="tb-btn tb-btn--accent">🔍 Гипотезы</button>
+          <button id="compare-render" class="tb-btn">⚡ Сравнить</button>
+          <button id="photo-download" class="tb-btn">💾</button>
+          <span id="photo-status" class="muted" style="font-size:11px;"></span>
+        </div>
+      </section>
+
+      <section class="controls">
+        <div class="controls-tabs">
+          <button class="tab-button active" data-tab-target="tab-basic">ОСНОВНОЕ</button>
+          <button class="tab-button" data-tab-target="tab-ai">AI</button>
+          <button class="tab-button" data-tab-target="tab-forensic">ДЕЛО</button>
+          <button class="tab-button" data-tab-target="tab-case">ЛОГИ</button>
+        </div>
+
+        <!-- TAB: BASIC -->
+        <div class="control-group tab-panel tab-basic active">
+          <h2>Таймлайн</h2>
+          <div class="timeline-header"><span id="timeline-current">0:00.000</span> / <span id="timeline-duration">0:00.000</span></div>
+          <input type="range" id="timeline" class="timeline-slider" min="0" max="0" step="0.001"/>
+          <div id="timeline-markers" class="timeline-markers"></div>
+          <div style="display:flex;gap:4px;margin:4px 0;"><button id="timeline-zoom-in" class="btn-ghost btn-xs">+</button><span id="timeline-zoom-value" class="mono-sm">1x</span><button id="timeline-zoom-out" class="btn-ghost btn-xs">−</button></div>
+          <label>Скорость <input type="range" id="speed" min="0.25" max="4" value="1" step="0.25"/></label>
+          <hr class="sep"/>
+          <h2>Качество</h2>
+          <div class="slider-grid">
+            <label>Экспозиция <input type="range" id="exposure" min="-100" max="100" value="0"/></label>
+            <label>Контраст <input type="range" id="contrast" min="-100" max="100" value="0"/></label>
+            <label>Чёткость <input type="range" id="clarity" min="0" max="100" value="0"/></label>
+            <label>Резкость <input type="range" id="sharpness" min="0" max="100" value="0"/></label>
+            <label>Температура <input type="range" id="temperature" min="-100" max="100" value="0"/></label>
+          </div>
+          <div class="slider-grid">
+            <label>Denoise <select id="denoise-profile"><option value="off">Выкл</option><option value="light">Лёгкий</option><option value="medium">Средний</option><option value="heavy">Сильный</option></select> <input type="range" id="denoise-input" min="0" max="100" value="0"/></label>
+            <label>Enhance <input type="range" id="enhance-input" min="0" max="100" value="0"/></label>
+            <label>Upscale <select id="upscale-factor"><option>2x</option><option>4x</option></select> <input type="checkbox" id="upscale-toggle"/></label>
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0;">
+            <label class="toggle"><input type="checkbox" id="grayscale-toggle"/> Ч/Б</label>
+            <label class="toggle"><input type="checkbox" id="lowlight-boost-toggle"/> Lowlight</label>
+            <label class="toggle"><input type="checkbox" id="bypass-filters-toggle"/> Bypass</label>
+            <label class="toggle"><input type="checkbox" id="temporal-denoise-toggle"/> Temporal</label>
+            <button id="temporal-denoise-btn" class="btn-ghost btn-xs">Apply</button>
+            <label>Win <input type="number" id="temporal-window-input" value="5" min="3" max="15" style="width:40px;"/></label>
+          </div>
+          <canvas id="temporal-preview" width="160" height="90" style="border:1px solid var(--border);border-radius:4px;"></canvas>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0;">
+            <button id="preset-detail" class="btn-ghost btn-xs">Детали</button>
+            <button id="preset-lowlight" class="btn-ghost btn-xs">Lowlight</button>
+            <button id="preset-night" class="btn-ghost btn-xs">Night</button>
+            <button id="preset-ultra-lowlight" class="btn-ghost btn-xs">Ultra</button>
+            <button id="reset-filters" class="btn-ghost btn-xs">↺ Reset</button>
+          </div>
+          <hr class="sep"/>
+          <h2>Детекция движения</h2>
+          <div style="display:flex;gap:6px;"><button id="motion-start" class="btn-ghost btn-xs">▶</button><button id="motion-stop" class="btn-ghost btn-xs">⏹</button><select id="fps-picker"><option value="5">5</option><option value="15" selected>15</option><option value="30">30</option></select></div>
+          <label>Чувств. <span id="motion-sensitivity-value">50</span><input type="range" id="motion-sensitivity" min="1" max="100" value="50"/></label>
+          <label>Cooldown <span id="motion-cooldown-value">500</span><input type="range" id="motion-cooldown" min="100" max="5000" value="500" step="100"/></label>
+          <hr class="sep"/>
+          <h2>Стабилизация</h2>
+          <label class="toggle"><input type="checkbox" id="stabilization-toggle"/> Вкл</label>
+          <label class="toggle"><input type="checkbox" id="stabilization-auto-toggle"/> Auto</label>
+          <div class="slider-grid">
+            <label>Сила <input type="range" id="stabilization-strength" min="0" max="100" value="50"/></label>
+            <label>Smooth <input type="range" id="stabilization-smoothing" min="1" max="30" value="10"/></label>
+            <label>X <input type="range" id="stabilization-offset-x" min="-50" max="50" value="0"/></label>
+            <label>Y <input type="range" id="stabilization-offset-y" min="-50" max="50" value="0"/></label>
+          </div>
+          <div style="display:flex;gap:4px;"><button id="stabilization-profile-light" class="btn-ghost btn-xs">Light</button><button id="stabilization-profile-medium" class="btn-ghost btn-xs">Med</button><button id="stabilization-profile-strong" class="btn-ghost btn-xs">Strong</button></div>
+        </div>
+
+        <!-- TAB: AI -->
+        <div class="control-group tab-panel tab-ai">
+          <h2>SAM 2 Tracking</h2>
+          <div class="button-row"><button id="ai-face-detect" class="btn-ghost">👤 Лица</button><button id="ai-object-detect" class="btn-ghost">🔍 Объекты</button></div>
+          <div id="ai-face-list" class="ai-list"></div><div id="ai-object-list" class="ai-list"></div>
+          <label class="toggle"><input type="checkbox" id="ai-face-marker-toggle" checked/> Маски лиц</label>
+          <label class="toggle"><input type="checkbox" id="ai-object-marker-toggle" checked/> Маски объектов</label>
+          <span id="ai-status" class="muted"></span>
+          <hr class="sep"/>
+          <h2>Track</h2>
+          <button id="ai-track-start-btn" class="btn-ghost">▶ Start</button><button id="ai-track-stop-btn" class="btn-ghost">⏹ Stop</button>
+          <hr class="sep"/>
+          <h2>Super Resolution</h2>
+          <select id="ai-sr-factor"><option value="2">2x</option><option value="4">4x</option></select>
+          <button id="ai-sr-apply" class="btn-accent">⚡ Upscale</button><button id="ai-sr-reset" class="btn-ghost btn-xs">Reset</button>
+          <hr class="sep"/>
+          <h2>Сцены</h2>
+          <label>Порог <input type="range" id="ai-scene-threshold" min="0" max="100" value="30"/></label>
+          <button id="ai-scenes-detect" class="btn-ghost">🎬 Detect</button><button id="ai-scenes-clear" class="btn-ghost btn-xs">Clear</button>
+          <div id="ai-scene-list" class="ai-list"></div>
+          <hr class="sep"/>
+          <h2>Провайдер</h2>
+          <select id="ai-provider-select"><option value="local">Local GPU</option><option value="mock">Mock (Demo)</option><option value="api">Remote API</option></select>
+          <button id="ai-capability-check" class="btn-ghost btn-xs">Check</button><span id="ai-capability-status" class="muted"></span>
+          <hr class="sep"/>
+          <h2>🌀 Motion Blur Fix</h2>
+          <label>Сила <input type="range" id="blur-fix-intensity" min="0" max="100" value="0"/></label>
+          <button id="ai-blur-fix-btn" class="btn-accent" style="width:100%;">Убрать смаз</button>
+          <hr class="sep"/>
+          <h2>🔬 ELA: Анализ подлинности</h2>
+          <button id="ai-ela-btn" class="btn-accent" style="width:100%;">Проверить подделку</button>
+          <hr class="sep"/>
+          <h2>🤖 Авто-диагностика</h2>
+          <button id="ai-auto-analyze-btn" class="btn-accent" style="width:100%;">Анализировать кадр</button>
+          <div id="ai-auto-metrics" class="muted" style="margin-top:6px;font-size:11px;white-space:pre-line;"></div>
+        </div>
+
+        <!-- TAB: FORENSIC -->
+        <div class="control-group tab-panel tab-forensic">
+          <h2>Карточка дела</h2>
+          <label>ID <input type="text" id="case-id" placeholder="CASE-001"/></label>
+          <label>Владелец <input type="text" id="case-owner"/></label>
+          <label>Статус <select id="case-status"><option>active</option><option>closed</option><option>archived</option></select></label>
+          <label>Теги <input type="text" id="case-tags" placeholder="ДТП, камера-3"/></label>
+          <label>Описание <textarea id="case-summary" rows="2"></textarea></label>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;"><button id="case-save" class="btn-accent btn-xs">💾</button><button id="case-load" class="btn-ghost btn-xs">📂</button><button id="case-delete" class="btn-ghost btn-xs">🗑</button></div>
+          <label>Поиск <input type="text" id="case-search"/></label><button id="case-clear-search" class="btn-ghost btn-xs">✕</button>
+          <input type="file" id="case-import-input" accept=".json" style="display:none;"/>
+          <div style="display:flex;gap:4px;margin-top:4px;"><button id="case-import-library" class="btn-ghost btn-xs">📥</button><button id="case-export-library" class="btn-ghost btn-xs">📤</button></div>
+          <hr class="sep"/>
+          <h2>Маркеры</h2>
+          <select id="marker-type"><option value="evidence">Улика</option><option value="suspect">Подозр.</option><option value="note">Заметка</option></select>
+          <input type="text" id="marker-note" placeholder="Описание"/>
+          <button id="add-marker" class="btn-ghost">📌 Добавить</button>
+          <div style="display:flex;gap:4px;"><button id="export-markers" class="btn-ghost btn-xs">Export</button><button id="preview-report" class="btn-ghost btn-xs">Preview</button><button id="export-report" class="btn-ghost btn-xs">📄 PDF</button></div>
+          <hr class="sep"/>
+          <h2>Гипотезы</h2>
+          <button id="hypothesis-generate" class="btn-accent" style="width:100%;">🧠 Генерировать</button>
+          <span id="hypothesis-status" class="muted"></span>
+          <div id="hypothesis-list" class="ai-list"></div>
+          <button id="hypothesis-export" class="btn-ghost btn-xs">📤</button>
+          <hr class="sep"/>
+          <h2>Сравнение</h2>
+          <div style="display:flex;gap:4px;"><input type="file" id="compare-left-input" accept="image/*" style="font-size:10px;max-width:130px;"/><input type="file" id="compare-right-input" accept="image/*" style="font-size:10px;max-width:130px;"/></div>
+          <label>Split <input type="range" id="compare-split-input" min="0" max="100" value="50"/></label><span id="compare-split-value" class="mono-sm">50%</span>
+          <button id="compare-render-btn" class="btn-ghost">⚡</button><span id="compare-status" class="muted"></span>
+        </div>
+
+        <!-- TAB: LOGS -->
+        <div class="control-group tab-panel tab-case">
+          <h2>Журнал</h2>
+          <ul id="log-list" class="log-list"></ul>
+          <div style="display:flex;gap:4px;margin-top:6px;"><button id="export-log" class="btn-ghost btn-xs">📋 Export</button><button id="log-entry-btn" class="btn-ghost btn-xs">+ Запись</button></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settings-modal" class="modal-overlay">
+  <div class="modal-panel">
+    <div class="modal-panel__header"><h2>⚙ AI Station</h2><button id="settings-modal-close" class="modal-x">&times;</button></div>
+    <div class="modal-panel__body">
+      <h3>Нейросети</h3>
+      <!-- VRAM Bar -->
+      <div style="margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">VRAM</div>
+        <div class="vram-bar"><div id="vram-bar-fill" class="vram-bar__fill vram-bar__fill--green" style="width:0%"></div><div id="vram-bar-label" class="vram-bar__label">Checking...</div></div>
+      </div>
+      <!-- AI Hub: model cards rendered dynamically -->
+      <div id="ai-hub-models"></div>
+      <label>Models <input type="text" id="models-path" placeholder="D:\PLAYE\models"/></label>
+      <div id="enterprise-section" style="display:none;">
+        <hr class="sep"/><h3>Enterprise</h3>
+        <label>Email <input type="email" id="login-email"/></label><label>Pass <input type="password" id="login-password"/></label>
+        <div style="display:flex;gap:4px;"><button id="login-btn" class="btn-accent btn-xs">Login</button><button id="logout-btn" class="btn-ghost btn-xs">Logout</button></div>
+        <span id="login-status" class="muted"></span>
+        <hr class="sep"/><h3>GPU</h3><button id="gpu-status-btn" class="btn-ghost btn-xs">Status</button><div id="gpu-status-panel" class="muted"></div>
+        <h3>Queue</h3>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;"><button id="queue-ffmpeg-job" class="btn-ghost btn-xs">Queue</button><button id="export-ffmpeg-job" class="btn-ghost btn-xs">Export</button><button id="download-ffmpeg-job" class="btn-ghost btn-xs">DL</button></div>
+        <pre id="ffmpeg-job-preview" class="muted" style="font-size:10px;max-height:60px;overflow:auto;"></pre>
+        <div style="display:flex;gap:4px;"><button id="pipeline-pause" class="btn-ghost btn-xs">⏸</button><button id="pipeline-resume" class="btn-ghost btn-xs">▶</button><button id="pipeline-retry-failed" class="btn-ghost btn-xs">↻</button><button id="pipeline-clear-terminal" class="btn-ghost btn-xs">Clear</button></div>
+        <h3>Teams</h3><div id="teams-panel"><input type="text" id="team-id-input" placeholder="id" style="width:60px;"/><input type="text" id="team-name-input" placeholder="name"/><input type="text" id="team-desc-input" placeholder="desc"/>
+        <button id="team-create" class="btn-ghost btn-xs">Create</button><input type="text" id="team-user-id-input" placeholder="user-id"/><button id="team-add-user" class="btn-ghost btn-xs">Add</button><button id="teams-refresh" class="btn-ghost btn-xs">↻</button></div>
+        <h3>Audit</h3><select id="audit-action-filter"><option value="">All</option></select><input type="number" id="audit-limit-input" value="50" style="width:50px;"/><button id="audit-refresh" class="btn-ghost btn-xs">↻</button><button id="audit-export-csv" class="btn-ghost btn-xs">CSV</button>
+        <div style="max-height:100px;overflow:auto;"><table style="width:100%;font-size:10px;"><tbody id="audit-table-body"></tbody></table></div>
+        <h3>Users</h3><button id="users-refresh" class="btn-ghost btn-xs">↻</button><div style="max-height:80px;overflow:auto;"><table style="width:100%;font-size:10px;"><tbody id="users-table-body"></tbody></table></div>
+        <h3>Dashboard</h3><button id="dashboard-refresh" class="btn-ghost btn-xs">↻</button><div id="dashboard-panel" class="muted"></div>
+        <h3>Timeseries</h3><button id="timeseries-refresh" class="btn-ghost btn-xs">↻</button><div id="timeseries-panel" class="muted"></div>
+      </div>
+    </div>
+    <div class="modal-panel__footer"><button id="settings-save" class="btn-accent">💾 Применить</button></div>
+  </div>
+</div>
+
+<div id="keyframes-panel" class="floating-panel" style="display:none;"></div>
+<canvas id="capture" class="hidden"></canvas>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

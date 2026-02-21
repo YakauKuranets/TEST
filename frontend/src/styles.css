@@ -1,0 +1,32 @@
+
+/* Photo mode enhancements */
+.photo-mode-placeholder {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(26, 32, 44, 0.95);
+  color: #a0aec0;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px;
+  font-size: 18px;
+  z-index: 10;
+}
+
+.photo-mode-placeholder p {
+  max-width: 600px;
+  line-height: 1.6;
+}
+
+/* В режиме фото скрыть контролы воспроизведения */
+.mode-photo .control-group.timeline,
+.mode-photo #speed,
+.mode-photo #frame-back,
+.mode-photo #frame-forward {
+  opacity: 0.3;
+  pointer-events: none;
+}
