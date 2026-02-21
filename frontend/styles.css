@@ -12,6 +12,7 @@
     --accent: #3b82f6;
     --accent-hover: #2563eb;
     --accent-glow: rgba(59, 130, 246, .15);
+    --lg: linear-gradient(135deg, #3b82f6, #8b5cf6);
     --purple: #8b5cf6;
     --green: #22c55e;
     --red: #ef4444;
@@ -72,6 +73,7 @@ body { margin: 0; font-family: var(--font); color: var(--text); background: var(
 .mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 .playlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; flex: 1; }
+.playlist:empty::before { content: 'Перетащите файлы сюда для начала анализа'; display: block; margin: 8px 0; padding: 10px 12px; color: var(--text-muted); font-size: 12px; border: 1px dashed var(--border); border-radius: var(--radius-sm); }
 .playlist li { padding: 10px 12px; border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition); }
 .playlist li:hover { background: var(--bg-3); }
 .playlist li.active { background: var(--accent-glow); border-left: 3px solid var(--accent); }
@@ -90,7 +92,7 @@ body { margin: 0; font-family: var(--font); color: var(--text); background: var(
 .motion-indicator.active { opacity: 1; }
 
 /* TOOLBARS */
-.viewer__toolbar { display: flex; align-items: center; gap: 4px; padding: 8px 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.viewer__toolbar { display: flex; align-items: center; gap: 4px; padding: 8px 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); flex-wrap: wrap; position: relative; z-index: 1; }
 .tb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; background: var(--bg-3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-dim); font-size: 12px; font-weight: 500; cursor: pointer; transition: var(--transition); }
 .tb-btn:hover { background: var(--bg-4); color: var(--text); border-color: var(--text-muted); }
 .tb-btn--accent { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -119,7 +121,8 @@ body { margin: 0; font-family: var(--font); color: var(--text); background: var(
 .badge-error { background: rgba(239, 68, 68, 0.15); color: var(--red); border: 1px solid rgba(239, 68, 68, 0.2); }
 
 /* MODALS */
-.modal-overlay { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); }
+.modal-overlay { position: fixed; inset: 0; z-index: 20000; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); }
+.modal-overlay.open { display: flex; }
 .modal-panel { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg); width: 100%; max-width: 540px; animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes modalIn { from { transform: scale(0.9) translateY(20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 
@@ -142,12 +145,16 @@ body { margin: 0; font-family: var(--font); color: var(--text); background: var(
 @media (max-width: 1024px) {
     .main { grid-template-columns: 1fr; height: auto; overflow: visible; }
     .controls { max-height: none; }
+    .viewer__toolbar { gap: 6px; }
+    .tb-btn { padding: 0 10px; min-width: 34px; }
 }
 
 /* ═══ SMART LOCKS (Phase 2) ═══ */
-.locked-tool { opacity: 0.45; cursor: not-allowed !important; position: relative; pointer-events: auto; }
+.locked-tool { opacity: 0.5; cursor: not-allowed !important; position: relative; pointer-events: auto; }
 .locked-tool::after { content: '🔒'; position: absolute; top: -4px; right: -4px; font-size: 10px; background: var(--bg-2); border-radius: 50%; padding: 1px 3px; }
 .locked-tool:hover::after { content: '🔒 Скачай'; font-size: 9px; padding: 2px 6px; white-space: nowrap; }
+.is-locked { opacity: 0.5; pointer-events: none; }
+.is-locked::after { content: "🔒"; margin-left: 4px; }
 
 .hardware-locked { opacity: 0.3; cursor: not-allowed !important; }
 .hardware-locked::after { content: '🛑'; position: absolute; top: -4px; right: -4px; font-size: 10px; }
@@ -179,6 +186,9 @@ body { margin: 0; font-family: var(--font); color: var(--text); background: var(
 .model-card__actions { display: flex; gap: 4px; }
 .model-card__progress { width: 100%; height: 4px; background: var(--bg-4); border-radius: 2px; margin-top: 4px; overflow: hidden; }
 .model-card__progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s ease; }
+.vram-progress--green { background: linear-gradient(90deg, #22c55e, #16a34a) !important; }
+.vram-progress--yellow { background: linear-gradient(90deg, #f59e0b, #d97706) !important; }
+.vram-progress--red { background: linear-gradient(90deg, #ef4444, #dc2626) !important; }
 
 /* ═══ TOAST ═══ */
 .toast-container { position: fixed; top: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 8px; }
@@ -229,6 +239,13 @@ body { margin: 0; font-family: var(--font); color: var(--text); background: var(
 .timeline-markers { position: relative; height: 12px; }
 .toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
 .toggle input { accent-color: var(--accent); }
+
+.settings-tabs { display:flex; gap:8px; margin-bottom:12px; }
+.settings-tab { flex:1; border:1px solid var(--border); background: var(--bg-3); color: var(--text-dim); border-radius: var(--radius-sm); padding: 8px 10px; cursor:pointer; transition: var(--transition); }
+.settings-tab.is-active { background: var(--lg); color: #fff; border-color: transparent; box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset; }
+.settings-panel { opacity: 0; max-height: 0; overflow: hidden; transform: translateY(4px); transition: opacity .22s ease, transform .22s ease, max-height .22s ease; }
+.settings-panel.is-active { opacity: 1; max-height: 2000px; transform: translateY(0); }
+
 .settings-section { margin-bottom: 16px; }
 .settings-section h3 { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; margin: 12px 0 8px; letter-spacing: 0.05em; }
 label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-dim); }

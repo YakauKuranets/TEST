@@ -13,7 +13,7 @@ const loadImageBitmap = async (file) => {
 
 export const createPhotoBlueprint = () => ({
   name: "photo",
-  init: ({ elements, actions }) => {
+  init: ({ elements, actions, state }) => {
     if (!elements.photoSourceInput || !elements.photoBlendButton || !elements.photoCanvas) return;
 
     const canvas = elements.photoCanvas;
@@ -23,6 +23,37 @@ export const createPhotoBlueprint = () => ({
       if (elements.photoStatus) {
         elements.photoStatus.textContent = text;
       }
+    };
+
+    const onFileSelect = async () => {
+      const file = elements.photoSourceInput.files?.[0];
+      if (!file) return;
+
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+        reader.readAsDataURL(file);
+      });
+
+      await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          canvas.style.display = "block";
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          state.photoOriginalImageDataUrl = dataUrl;
+          state.photoResultImageDataUrl = dataUrl;
+          if (canvas.width > 0) {
+            setStatus(`Загружено: ${file.name} (${canvas.width}×${canvas.height})`);
+          }
+          resolve();
+        };
+        img.onerror = () => reject(new Error("Не удалось декодировать изображение"));
+        img.src = dataUrl;
+      });
     };
 
     const blendPhotos = async () => {
@@ -38,6 +69,7 @@ export const createPhotoBlueprint = () => ({
 
       canvas.width = width;
       canvas.height = height;
+      canvas.style.display = "block";
 
       const accumulator = new Float32Array(width * height * 4);
 
@@ -56,6 +88,8 @@ export const createPhotoBlueprint = () => ({
       }
       ctx.putImageData(output, 0, 0);
 
+      state.photoResultImageDataUrl = canvas.toDataURL("image/png");
+
       setStatus(`Готово: объединено ${files.length} кадров (${width}×${height}).`);
       actions.recordLog("photo-reconstruct", "Собрана реконструкция из набора кадров", {
         sources: files.map((file) => file.name),
@@ -63,6 +97,10 @@ export const createPhotoBlueprint = () => ({
         height,
       });
     };
+
+    elements.photoSourceInput.addEventListener("change", () => {
+      onFileSelect().catch((error) => setStatus(error.message || "Ошибка загрузки фото"));
+    });
 
     elements.photoBlendButton.addEventListener("click", () => {
       blendPhotos().catch((error) => {
