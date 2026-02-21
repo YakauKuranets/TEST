@@ -8,10 +8,18 @@ import os
 import cv2
 import logging
 import io
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
+from typing import Any, Dict, List, Optional, Tuple
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Depends
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
+
+try:
+    from celery.result import AsyncResult
+except Exception:  # pragma: no cover - celery is optional in desktop bundle
+    class AsyncResult:  # type: ignore[override]
+        def __init__(self, task_id: str):
+            self.task_id = task_id
+            self.state = "UNKNOWN"
 
 from app.api.response import success_response
 from app.core.video_engine import LocalVideoEngine
@@ -42,6 +50,139 @@ class TemporalRequest(BaseModel):
     file_path: str
     timestamp: float
     window_size: int = 5  # Количество кадров для анализа (рекомендуется 5-7)
+
+
+class PropagateRequest(BaseModel):
+    file_path: str
+    start_frame_time: float
+
+
+PRESET_DEFAULTS: Dict[str, Dict[str, Dict[str, Any]]] = {
+    "forensic_safe": {
+        "denoise": {"level": "light"},
+        "upscale": {"factor": 2},
+    },
+    "presentation": {
+        "denoise": {"level": "medium"},
+        "upscale": {"factor": 8},
+    },
+}
+
+
+def normalize_job_params(operation: str, params: Dict[str, Any]) -> Tuple[str, List[Any], Dict[str, Any]]:
+    operation = str(operation or "").strip().lower()
+    payload = dict(params or {})
+
+    preset = payload.pop("preset", None)
+    meta: Dict[str, Any] = {}
+    if preset is not None:
+        preset = str(preset).strip().lower()
+        if preset not in PRESET_DEFAULTS:
+            raise HTTPException(status_code=422, detail=f"preset must be one of {', '.join(sorted(PRESET_DEFAULTS))}")
+        meta["preset"] = preset
+        payload = {**PRESET_DEFAULTS[preset].get(operation, {}), **payload}
+
+    if operation == "upscale":
+        factor_raw = payload.get("factor", 2)
+        try:
+            factor = int(factor_raw)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="factor must be one of 2, 4, 8")
+        if factor not in {2, 4, 8}:
+            raise HTTPException(status_code=422, detail="factor must be one of 2, 4, 8")
+        meta["factor"] = factor
+        return operation, [factor], meta
+
+    if operation == "denoise":
+        level = str(payload.get("level", "medium")).strip().lower()
+        if level not in {"light", "medium", "heavy"}:
+            raise HTTPException(status_code=422, detail="level must be one of light, medium, heavy")
+        meta["level"] = level
+        return operation, [level], meta
+
+    if operation == "detect_objects":
+        args: List[Any] = [None, None]
+        if "scene_threshold" in payload:
+            try:
+                scene_threshold = float(payload["scene_threshold"])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=422, detail="scene_threshold must be numeric")
+            if not 0 <= scene_threshold <= 100:
+                raise HTTPException(status_code=422, detail="scene_threshold must be between 0 and 100")
+            meta["scene_threshold"] = scene_threshold
+            args[0] = scene_threshold
+        if "temporal_window" in payload:
+            try:
+                temporal_window = int(payload["temporal_window"])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=422, detail="temporal_window must be an integer")
+            if not 1 <= temporal_window <= 12:
+                raise HTTPException(status_code=422, detail="temporal_window must be between 1 and 12")
+            meta["temporal_window"] = temporal_window
+            args[1] = temporal_window
+        return operation, args, meta
+
+    raise HTTPException(status_code=422, detail=f"Unsupported operation: {operation}")
+
+
+def _to_task_status(async_result: Any, task_id: str) -> Dict[str, Any]:
+    state = str(getattr(async_result, "state", "UNKNOWN") or "UNKNOWN").upper()
+    payload: Dict[str, Any] = {"task_id": task_id, "raw_state": state}
+    state_map = {
+        "PENDING": ("pending", 0, False, 700),
+        "RECEIVED": ("queued", 0, False, 700),
+        "STARTED": ("running", 1, False, 700),
+        "PROGRESS": ("running", 0, False, 700),
+        "SUCCESS": ("done", 100, True, 0),
+        "FAILURE": ("failed", 100, True, 0),
+        "REVOKED": ("canceled", 100, True, 0),
+        "RETRY": ("retry", 0, False, 900),
+    }
+    status, default_progress, is_final, poll_after_ms = state_map.get(state, ("unknown", 0, False, 1000))
+    payload.update({
+        "status": status,
+        "progress": default_progress,
+        "is_final": is_final,
+        "poll_after_ms": poll_after_ms,
+    })
+
+    if state == "PROGRESS":
+        info = getattr(async_result, "info", {}) or {}
+        payload["progress"] = int(info.get("progress", payload["progress"]))
+        payload["meta"] = {k: v for k, v in info.items() if k != "progress"}
+    elif state == "SUCCESS":
+        payload["result"] = getattr(async_result, "result", None)
+    elif state == "FAILURE":
+        payload["error"] = str(getattr(async_result, "result", "Task failed"))
+
+    return payload
+
+
+def _log_enterprise_action(*_args: Any, **_kwargs: Any) -> None:
+    """No-op placeholder used by enterprise middleware in API tests."""
+
+
+@router.post("/jobs/{task_id}/cancel")
+async def cancel_job(request: Request, task_id: str, auth: Any = Depends(lambda: None)):
+    async_result = AsyncResult(task_id)
+    if hasattr(async_result, "revoke"):
+        async_result.revoke(terminate=False)
+        _log_enterprise_action("job_cancel", task_id=task_id)
+        status_payload = {
+            "task_id": task_id,
+            "status": "canceled",
+            "is_final": True,
+            "poll_after_ms": 0,
+        }
+        return success_response(request, status="done", result=status_payload)
+
+    status_payload = {
+        "task_id": task_id,
+        "status": "cancel-unsupported",
+        "is_final": False,
+        "poll_after_ms": 1000,
+    }
+    return success_response(request, status="accepted", result=status_payload)
 
 # --- ЭНДПОИНТЫ ВИДЕО И КАДРОВ ---
 
@@ -172,6 +313,7 @@ async def get_job_status(request: Request, task_id: str):
 from fastapi import File, UploadFile, Form
 from PIL import Image
 import numpy as np
+import base64
 
 
 def _read_upload_image(file_bytes: bytes) -> np.ndarray:
@@ -192,8 +334,10 @@ def _numpy_to_png_stream(img_np: np.ndarray) -> io.BytesIO:
 
 @router.post("/ai/forensic/deblur")
 async def forensic_deblur(
+    request: Request,
     file: UploadFile = File(...),
-    intensity: int = Form(default=50)
+    intensity: int = Form(default=50),
+    angle: float = Form(default=0.0),
 ):
     """
     Killer Feature #1: Motion Blur Fixer.
@@ -205,9 +349,15 @@ async def forensic_deblur(
         raw = await file.read()
         img = _read_upload_image(raw)
         intensity = max(1, min(100, intensity))
-        result = apply_blind_deconvolution(img, intensity=intensity)
+        angle = float(max(-180.0, min(180.0, angle)))
+        result = apply_blind_deconvolution(img, intensity=intensity, angle=angle)
         buf = _numpy_to_png_stream(result)
-        return StreamingResponse(buf, media_type="image/png")
+        image_base64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return success_response(request, status="done", result={
+            "image_base64": image_base64,
+            "intensity": intensity,
+            "angle": angle,
+        })
     except Exception as e:
         logger.error("Deblur error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

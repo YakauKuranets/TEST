@@ -144,7 +144,7 @@ class ForensicHypothesisEngine:
 # ═══════════════════════════════════════════════════════════════
 # KILLER FEATURE #1: Motion Blur Fixer (Wiener Deconvolution)
 # ═══════════════════════════════════════════════════════════════
-def apply_blind_deconvolution(image_np: np.ndarray, intensity: int = 50) -> np.ndarray:
+def apply_blind_deconvolution(image_np: np.ndarray, intensity: int = 50, angle: float = 0.0) -> np.ndarray:
     """Remove motion blur using Wiener filter in frequency domain."""
     gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY) if len(image_np.shape) == 3 else image_np
 
@@ -156,6 +156,9 @@ def apply_blind_deconvolution(image_np: np.ndarray, intensity: int = 50) -> np.n
     # Create directional motion blur kernel
     kernel = np.zeros((kernel_size, kernel_size), dtype=np.float32)
     kernel[kernel_size // 2, :] = 1.0
+    if angle:
+        rot = cv2.getRotationMatrix2D((kernel_size / 2, kernel_size / 2), float(angle), 1.0)
+        kernel = cv2.warpAffine(kernel, rot, (kernel_size, kernel_size), flags=cv2.INTER_LINEAR)
     kernel /= kernel_size
 
     # Wiener deconvolution per channel

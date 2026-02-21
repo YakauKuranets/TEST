@@ -1,82 +1,30 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
-const { spawn } = require('child_process');
-const path = require('path');
-const fs = require('fs');
-const net = require('net');
+const { contextBridge, ipcRenderer } = require('electron');
 
-let mainWindow;
-let pythonProcess;
-let backendPort = 8000;
+const DEFAULT_PORT = 8000;
 
-const isDev = process.argv.includes('--dev') || !app.isPackaged;
-const backendPath = isDev ? path.join(__dirname, 'backend') : path.join(process.resourcesPath, 'backend');
-
-function findFreePort() {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(0, '127.0.0.1', () => {
-      const port = server.address().port;
-      server.close(() => resolve(port));
-    });
-  });
-}
-
-async function startPythonBackend() {
-  backendPort = await findFreePort();
-  const pythonPath = 'D:\\PLAYE\\venv\\Scripts\\python.exe';
-  const modelsDir = 'D:\\PLAYE\\models';
-
-  console.log(`[Main] Starting Python backend on port ${backendPort}...`);
-
-  return new Promise((resolve, reject) => {
-    if (!fs.existsSync(modelsDir)) fs.mkdirSync(modelsDir, { recursive: true });
-
-    pythonProcess = spawn(pythonPath, [
-      '-u', '-m', 'uvicorn', 'app.main:app',
-      '--host', '127.0.0.1', '--port', backendPort.toString()
-    ], {
-      cwd: backendPath,
-      env: { ...process.env, PYTHONUNBUFFERED: '1', PLAYE_MODELS_DIR: modelsDir, API_PORT: backendPort.toString() }
-    });
-
-    const checkOutput = (data) => {
-      const out = data.toString();
-      console.log(`[Python] ${out.trim()}`);
-      if (out.includes('Uvicorn running') || out.includes('Application startup complete')) resolve();
-    };
-
-    pythonProcess.stdout.on('data', checkOutput);
-    pythonProcess.stderr.on('data', checkOutput);
-    pythonProcess.on('error', (err) => reject(err));
-    setTimeout(() => reject(new Error('Backend timeout (120s)')), 120000);
-  });
-}
-
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1440, height: 900,
-    backgroundColor: '#08090c',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: true,
-      contextIsolation: true, // Включено для стабильности preload.js
-    }
-  });
-
-  mainWindow.loadFile(path.join(__dirname, 'frontend/index.html'));
-  mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.executeJavaScript(`window.API_PORT = ${backendPort};`);
-  });
-  if (isDev) mainWindow.webContents.openDevTools();
-}
-
-ipcMain.handle('get-api-url', () => `http://127.0.0.1:${backendPort}/api`);
-ipcMain.handle('open-folder', (e, p) => shell.openPath(p || 'D:\\PLAYE\\models'));
-
-app.whenReady().then(async () => {
-  try { await startPythonBackend(); createWindow(); }
-  catch (err) { dialog.showErrorBox('Ошибка', err.message); app.quit(); }
+window.addEventListener('DOMContentLoaded', () => {
+  if (typeof window.API_PORT === 'undefined' || Number.isNaN(Number(window.API_PORT))) {
+    window.API_PORT = DEFAULT_PORT;
+    console.warn(`[preload] API_PORT was undefined, fallback to ${DEFAULT_PORT}`);
+  }
 });
 
-app.on('will-quit', () => { if (pythonProcess) pythonProcess.kill(); });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+contextBridge.exposeInMainWorld('electronAPI', {
+  getApiUrl: () => ipcRenderer.invoke('get-api-url'),
+  openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
+  downloadModel: (payload) => ipcRenderer.invoke('download-model', payload),
+  downloadAllModels: (tasks) => ipcRenderer.invoke('download-models-all', { tasks }),
+  deleteModel: (payload) => ipcRenderer.invoke('delete-model', payload),
+  onDownloadProgress: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const handler = (_event, data) => cb(data);
+    ipcRenderer.on('download-progress', handler);
+    return () => ipcRenderer.removeListener('download-progress', handler);
+  },
+  onModelStatusChanged: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const handler = (_event, data) => cb(data);
+    ipcRenderer.on('model-status-changed', handler);
+    return () => ipcRenderer.removeListener('model-status-changed', handler);
+  },
+});

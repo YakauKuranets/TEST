@@ -177,7 +177,8 @@
           <hr class="sep"/>
           <h2>🌀 Motion Blur Fix</h2>
           <label>Сила <input type="range" id="blur-fix-intensity" min="0" max="100" value="0"/></label>
-          <button id="ai-blur-fix-btn" class="btn-accent" style="width:100%;">Убрать смаз</button>
+          <label>Угол <input type="range" id="blur-fix-angle" min="-180" max="180" value="0"/></label>
+          <button id="ai-blur-fix-btn" class="btn-accent" data-requires-model="nafnet" style="width:100%;">Убрать смаз</button>
           <hr class="sep"/>
           <h2>🔬 ELA: Анализ подлинности</h2>
           <button id="ai-ela-btn" class="btn-accent" style="width:100%;">Проверить подделку</button>
@@ -231,38 +232,57 @@
   <div class="modal-panel">
     <div class="modal-panel__header"><h2>⚙ AI Station</h2><button id="settings-modal-close" class="modal-x">&times;</button></div>
     <div class="modal-panel__body">
+      <div class="settings-tabs">
+        <button class="settings-tab is-active" data-settings-tab="models">Модели</button>
+        <button class="settings-tab" data-settings-tab="system">Система</button>
+        <button class="settings-tab" data-settings-tab="enterprise">Enterprise</button>
+      </div>
 
-      <div class="settings-section">
-        <h3>📊 Аппаратные ресурсы</h3>
-        <div id="vram-monitor-container">
-           <span class="muted">Ожидание телеметрии GPU...</span>
+      <section class="settings-panel is-active" data-settings-panel="models">
+        <div class="settings-section">
+          <h3>Модели (локальные)</h3>
+          <div style="display:flex;gap:6px;margin-bottom:8px;"><button id="download-all-models" class="btn-accent btn-xs">Скачать всё</button></div>
+          <div id="ai-hub-models"></div>
+          <label>Models <input type="text" id="models-path" placeholder="D:\PLAYE\models"/></label>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+            <button id="check-model-updates" class="btn-ghost btn-xs">Проверить обновления</button>
+            <span id="model-updates-status" class="muted"></span>
+          </div>
+          <div id="model-download-progress" class="model-card__progress" style="margin-top:8px;">
+            <div id="vram-progress" class="model-card__progress-fill" style="width:0%"></div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div class="settings-section">
-        <h3>Модели (локальные)</h3>
-        <div id="ai-hub-models"></div>
-        <label>Models <input type="text" id="models-path" placeholder="D:\PLAYE\models"/></label>
-      </div>
+      <section class="settings-panel" data-settings-panel="system">
+        <div class="settings-section">
+          <h3>📊 Аппаратные ресурсы</h3>
+          <div id="vram-monitor-container">
+             <span class="muted">Ожидание телеметрии GPU...</span>
+          </div>
+        </div>
+      </section>
 
-      <div id="enterprise-section" style="display:none;">
-        <hr class="sep"/><h3>Enterprise</h3>
-        <label>Email <input type="email" id="login-email"/></label><label>Pass <input type="password" id="login-password"/></label>
-        <div style="display:flex;gap:4px;"><button id="login-btn" class="btn-accent btn-xs">Login</button><button id="logout-btn" class="btn-ghost btn-xs">Logout</button></div>
-        <span id="login-status" class="muted"></span>
-        <hr class="sep"/><h3>GPU</h3><button id="gpu-status-btn" class="btn-ghost btn-xs">Status</button><div id="gpu-status-panel" class="muted"></div>
-        <h3>Queue</h3>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;"><button id="queue-ffmpeg-job" class="btn-ghost btn-xs">Queue</button><button id="export-ffmpeg-job" class="btn-ghost btn-xs">Export</button><button id="download-ffmpeg-job" class="btn-ghost btn-xs">DL</button></div>
-        <pre id="ffmpeg-job-preview" class="muted" style="font-size:10px;max-height:60px;overflow:auto;"></pre>
-        <div style="display:flex;gap:4px;"><button id="pipeline-pause" class="btn-ghost btn-xs">⏸</button><button id="pipeline-resume" class="btn-ghost btn-xs">▶</button><button id="pipeline-retry-failed" class="btn-ghost btn-xs">↻</button><button id="pipeline-clear-terminal" class="btn-ghost btn-xs">Clear</button></div>
-        <h3>Teams</h3><div id="teams-panel"><input type="text" id="team-id-input" placeholder="id" style="width:60px;"/><input type="text" id="team-name-input" placeholder="name"/><input type="text" id="team-desc-input" placeholder="desc"/>
-        <button id="team-create" class="btn-ghost btn-xs">Create</button><input type="text" id="team-user-id-input" placeholder="user-id"/><button id="team-add-user" class="btn-ghost btn-xs">Add</button><button id="teams-refresh" class="btn-ghost btn-xs">↻</button></div>
-        <h3>Audit</h3><select id="audit-action-filter"><option value="">All</option></select><input type="number" id="audit-limit-input" value="50" style="width:50px;"/><button id="audit-refresh" class="btn-ghost btn-xs">↻</button><button id="audit-export-csv" class="btn-ghost btn-xs">CSV</button>
-        <div style="max-height:100px;overflow:auto;"><table style="width:100%;font-size:10px;"><tbody id="audit-table-body"></tbody></table></div>
-        <h3>Users</h3><button id="users-refresh" class="btn-ghost btn-xs">↻</button><div style="max-height:80px;overflow:auto;"><table style="width:100%;font-size:10px;"><tbody id="users-table-body"></tbody></table></div>
-        <h3>Dashboard</h3><button id="dashboard-refresh" class="btn-ghost btn-xs">↻</button><div id="dashboard-panel" class="muted"></div>
-        <h3>Timeseries</h3><button id="timeseries-refresh" class="btn-ghost btn-xs">↻</button><div id="timeseries-panel" class="muted"></div>
-      </div>
+      <section class="settings-panel" data-settings-panel="enterprise">
+        <div id="enterprise-section">
+          <hr class="sep"/><h3>Enterprise</h3>
+          <label>Email <input type="email" id="login-email"/></label><label>Pass <input type="password" id="login-password"/></label>
+          <div style="display:flex;gap:4px;"><button id="login-btn" class="btn-accent btn-xs">Login</button><button id="logout-btn" class="btn-ghost btn-xs">Logout</button></div>
+          <span id="login-status" class="muted"></span>
+          <hr class="sep"/><h3>GPU</h3><button id="gpu-status-btn" class="btn-ghost btn-xs">Status</button><div id="gpu-status-panel" class="muted"></div>
+          <h3>Queue</h3>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;"><button id="queue-ffmpeg-job" class="btn-ghost btn-xs">Queue</button><button id="export-ffmpeg-job" class="btn-ghost btn-xs">Export</button><button id="download-ffmpeg-job" class="btn-ghost btn-xs">DL</button></div>
+          <pre id="ffmpeg-job-preview" class="muted" style="font-size:10px;max-height:60px;overflow:auto;"></pre>
+          <div style="display:flex;gap:4px;"><button id="pipeline-pause" class="btn-ghost btn-xs">⏸</button><button id="pipeline-resume" class="btn-ghost btn-xs">▶</button><button id="pipeline-retry-failed" class="btn-ghost btn-xs">↻</button><button id="pipeline-clear-terminal" class="btn-ghost btn-xs">Clear</button></div>
+          <h3>Teams</h3><div id="teams-panel"><input type="text" id="team-id-input" placeholder="id" style="width:60px;"/><input type="text" id="team-name-input" placeholder="name"/><input type="text" id="team-desc-input" placeholder="desc"/>
+          <button id="team-create" class="btn-ghost btn-xs">Create</button><input type="text" id="team-user-id-input" placeholder="user-id"/><button id="team-add-user" class="btn-ghost btn-xs">Add</button><button id="teams-refresh" class="btn-ghost btn-xs">↻</button></div>
+          <h3>Audit</h3><select id="audit-action-filter"><option value="">All</option></select><input type="number" id="audit-limit-input" value="50" style="width:50px;"/><button id="audit-refresh" class="btn-ghost btn-xs">↻</button><button id="audit-export-csv" class="btn-ghost btn-xs">CSV</button>
+          <div style="max-height:100px;overflow:auto;"><table style="width:100%;font-size:10px;"><tbody id="audit-table-body"></tbody></table></div>
+          <h3>Users</h3><button id="users-refresh" class="btn-ghost btn-xs">↻</button><div style="max-height:80px;overflow:auto;"><table style="width:100%;font-size:10px;"><tbody id="users-table-body"></tbody></table></div>
+          <h3>Dashboard</h3><button id="dashboard-refresh" class="btn-ghost btn-xs">↻</button><div id="dashboard-panel" class="muted"></div>
+          <h3>Timeseries</h3><button id="timeseries-refresh" class="btn-ghost btn-xs">↻</button><div id="timeseries-panel" class="muted"></div>
+        </div>
+      </section>
     </div>
     <div class="modal-panel__footer"><button id="settings-save" class="btn-accent">💾 Применить</button></div>
   </div>

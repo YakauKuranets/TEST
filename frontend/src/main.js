@@ -73,6 +73,7 @@ const elements = {
 
   // Settings
   settingsBtn: $id('workspace-settings-btn'),
+  launcherSettingsBtn: $id('launcher-settings-btn'),
   settingsModal: $id('settings-modal'),
 
   // Timeline
@@ -153,6 +154,7 @@ const elements = {
   // Blur fix + ELA + Auto-analyze (new killer features)
   blurFixBtn: $id('ai-blur-fix-btn'),
   blurFixSlider: $id('blur-fix-intensity'),
+  blurFixAngle: $id('blur-fix-angle'),
   elaBtn: $id('ai-ela-btn'),
   autoAnalyzeBtn: $id('ai-auto-analyze-btn'),
   autoMetrics: $id('ai-auto-metrics'),
@@ -192,6 +194,7 @@ const elements = {
   compareSplitInput: $id('compare-split-input'),
   compareSplitValue: $id('compare-split-value'),
   compareRenderButton: $id('compare-render-btn'),
+  compareRenderToolbarButton: $id('compare-render'),
   compareStatus: $id('compare-status'),
 
   // Logs
@@ -238,16 +241,48 @@ const elements = {
 const PORT = () => window.API_PORT || 8000;
 const API = (path) => `http://127.0.0.1:${PORT()}${path}`;
 
+
+const api = {
+  getModelStatus: async (modelId) => {
+    const resp = await fetch(API('/api/system/models-status'));
+    const data = await resp.json();
+    return Boolean(data?.[modelId]);
+  }
+};
+
+const showModelDownloadDialog = (modelId) => {
+  const modal = document.getElementById('settings-modal');
+  if (modal) {
+    modal.classList.add('open');
+    modal.style.display = 'flex';
+  }
+  const targetTab = document.querySelector('.settings-tab[data-settings-tab="models"]');
+  targetTab?.click();
+};
+
+window.checkModelAndRun = async (modelId, taskFunction) => {
+  const status = await api.getModelStatus(modelId);
+  if (!status) {
+    showModelDownloadDialog(modelId);
+    return;
+  }
+  taskFunction();
+};
+
 const actions = {
   recordLog: (type, message) => {
     const time = new Date().toLocaleTimeString();
     console.log(`[${type}] ${message}`);
     const logList = $id('log-list');
     if (logList) {
+      const shouldStickToBottom = (logList.scrollTop + logList.clientHeight) >= (logList.scrollHeight - 16);
       const li = document.createElement('li');
       li.className = `log-item log-${type}`;
       li.innerHTML = `<span class="log-time">${time}</span> <span class="log-msg">${message}</span>`;
-      logList.prepend(li);
+      logList.appendChild(li);
+      if (shouldStickToBottom) {
+        logList.scrollTop = logList.scrollHeight;
+      }
     }
   },
 
@@ -282,7 +317,7 @@ const actions = {
       });
       const data = await resp.json();
       if (data.status === 'done') actions.recordLog('ai-success', 'Кадр восстановлен');
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   },
 
   // ═══ SAM 2 ═══
@@ -334,20 +369,39 @@ const actions = {
   runMotionBlurFix: async () => {
     actions.recordLog('ai', 'Deconvolution: убираю смаз...');
     const intensity = elements.blurFixSlider?.value || 50;
+    const angle = elements.blurFixAngle?.value || 0;
     try {
       const canvas = elements.canvas;
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       const fd = new FormData();
       fd.append('file', blob, 'frame.png');
       fd.append('intensity', intensity);
-      const resp = await fetch(API('/api/ai/forensic/deblur'), { method: 'POST', body: fd });
+      fd.append('angle', angle);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const resp = await fetch(API('/api/ai/forensic/deblur'), { method: 'POST', body: fd, signal: controller.signal });
+      clearTimeout(timeoutId);
       if (resp.ok) {
-        const resultBlob = await resp.blob();
+        const contentType = resp.headers.get('content-type') || '';
         const img = new Image();
-        img.onload = () => { const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height); actions.recordLog('ai-success', `Смаз убран (intensity=${intensity})`); URL.revokeObjectURL(img.src); };
-        img.src = URL.createObjectURL(resultBlob);
+        img.onload = () => {
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          actions.recordLog('ai-success', `Смаз убран (intensity=${intensity}, angle=${angle})`);
+          if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+        };
+
+        if (contentType.includes('application/json')) {
+          const data = await resp.json();
+          const imageBase64 = data?.result?.image_base64;
+          if (!imageBase64) throw new Error('Backend did not return image_base64');
+          img.src = `data:image/png;base64,${imageBase64}`;
+        } else {
+          const resultBlob = await resp.blob();
+          img.src = URL.createObjectURL(resultBlob);
+        }
       } else { actions.recordLog('ai-error', await resp.text()); }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   },
 
   // ═══ ELA: Error Level Analysis (Killer Feature #2) ═══
@@ -377,7 +431,7 @@ const actions = {
         };
         img.src = URL.createObjectURL(resultBlob);
       } else { actions.recordLog('ai-error', await resp.text()); }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   },
 
   // ═══ AUTO-ANALYZE: Image Metrics Agent (Killer Feature #3) ═══
@@ -396,7 +450,7 @@ const actions = {
         if (elements.autoMetrics) elements.autoMetrics.textContent = text;
         actions.recordLog('ai-success', `Диагностика: ${m.recommendation}`);
       }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   },
 
   // ═══ SYSTEM ═══
@@ -410,6 +464,7 @@ const actions = {
 
   toggleSettings: (show) => {
     if (elements.settingsModal) {
+      elements.settingsModal.classList.toggle('open', !!show);
       elements.settingsModal.style.display = show ? 'flex' : 'none';
       if (show) actions.refreshModelsStatus();
     }
@@ -610,6 +665,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Settings
   elements.settingsBtn?.addEventListener('click', () => actions.toggleSettings(true));
+  elements.launcherSettingsBtn?.addEventListener('click', () => actions.toggleSettings(true));
   $id('settings-modal-close')?.addEventListener('click', () => actions.toggleSettings(false));
 
   // ═══ LAUNCHER LOGIC ═══
@@ -761,7 +817,7 @@ window.addEventListener('DOMContentLoaded', () => {
       } else {
         actions.recordLog('ai-error', `Upscale failed: ${resp.status}`);
       }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   });
 
   // Face Enhance (from AI routes)
@@ -782,7 +838,7 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         img.src = URL.createObjectURL(rb);
       }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   };
 
   // Denoise (from AI routes)
@@ -805,7 +861,7 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         img.src = URL.createObjectURL(rb);
       }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   };
 
   // OCR
@@ -822,7 +878,7 @@ window.addEventListener('DOMContentLoaded', () => {
         actions.recordLog('ai-success', `OCR: ${text.substring(0, 100)}`);
         actions.showToast(`OCR: ${text.substring(0, 80)}`, 'success');
       }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   };
 
   // Colorize
@@ -843,7 +899,7 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         img.src = URL.createObjectURL(rb);
       }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   };
 
   // Depth estimation
@@ -871,7 +927,7 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         img.src = URL.createObjectURL(rb);
       }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   };
 
   // Inpaint
@@ -897,7 +953,7 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         img.src = URL.createObjectURL(rb);
       }
-    } catch (err) { actions.recordLog('ai-error', err.message); }
+    } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   };
 
   // Expose all AI actions globally for potential UI use
