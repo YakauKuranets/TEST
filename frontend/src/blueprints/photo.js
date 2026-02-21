@@ -46,6 +46,8 @@ export const createPhotoBlueprint = () => ({
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           state.photoOriginalImageDataUrl = dataUrl;
           state.photoResultImageDataUrl = dataUrl;
+          state.originalPhotoBase64 = String(dataUrl).split(',')[1] || "";
+          state.originalPhotoData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           if (canvas.width > 0) {
             setStatus(`Загружено: ${file.name} (${canvas.width}×${canvas.height})`);
           }

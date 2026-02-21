@@ -7,7 +7,7 @@ export const createAiHubBlueprint = () => ({
     const modelContainer = document.getElementById('ai-hub-models');
     const updatesBtn = document.getElementById('check-model-updates');
     const updatesStatus = document.getElementById('model-updates-status');
-    const progressEl = document.getElementById('vram-progress');
+    const progressEl = document.getElementById('vram-progress') || document.querySelector('.progress-fill');
     const downloadAllBtn = document.getElementById('download-all-models');
     const settingsTabs = Array.from(document.querySelectorAll('.settings-tab'));
     const settingsPanels = Array.from(document.querySelectorAll('.settings-panel'));
@@ -51,7 +51,7 @@ export const createAiHubBlueprint = () => ({
     const updateLocks = () => {
       document.querySelectorAll('[data-requires-model]').forEach((btn) => {
         const modelId = normalizeModelId(btn.getAttribute('data-requires-model'));
-        const installed = Boolean(statusMap[modelId]);
+        const installed = Boolean(statusMap[modelId] || statusMap[btn.getAttribute('data-requires-model')]);
         if (!installed) {
           if (btn.id === 'ai-sr-apply' && !btn.dataset.lockedText) {
             btn.dataset.lockedText = btn.textContent;
@@ -146,7 +146,11 @@ export const createAiHubBlueprint = () => ({
 
     const refreshStatus = async () => {
       try {
-        statusMap = await safeRequest(`${API_BASE}/system/models-status`);
+        if (window.electronAPI?.checkModels) {
+          statusMap = await window.electronAPI.checkModels();
+        } else {
+          statusMap = await safeRequest(`${API_BASE}/system/models-status`);
+        }
         updateLocks();
         renderManifest();
       } catch (e) {
@@ -171,8 +175,14 @@ export const createAiHubBlueprint = () => ({
     };
 
     const activateSettingsTab = (tabName) => {
-      settingsTabs.forEach((tab) => tab.classList.toggle('is-active', tab.dataset.settingsTab === tabName));
-      settingsPanels.forEach((panel) => panel.classList.toggle('is-active', panel.dataset.settingsPanel === tabName));
+      settingsTabs.forEach((tab) => {
+        tab.classList.toggle('is-active', tab.dataset.settingsTab === tabName);
+        tab.classList.toggle('active', tab.dataset.settingsTab === tabName);
+      });
+      settingsPanels.forEach((panel) => {
+        panel.classList.toggle('is-active', panel.dataset.settingsPanel === tabName);
+        panel.classList.toggle('active', panel.dataset.settingsPanel === tabName);
+      });
     };
 
     settingsTabs.forEach((tab) => tab.addEventListener('click', () => activateSettingsTab(tab.dataset.settingsTab)));
