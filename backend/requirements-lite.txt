@@ -1,0 +1,39 @@
+# ═══════════════════════════════════════════════════════════════
+# PLAYE Studio Pro v3.0 — LITE (Слабые ПК: 4-8GB RAM, без GPU)
+#
+# Что работает: Сервер, видео-анализ, базовые фильтры, ELA,
+#   deblur (Wiener), auto-analyze, OCR (easyocr), маркеры, дела.
+# Что НЕ работает: face-enhance, upscale AI, SAM 2, depth,
+#   inpaint, colorize, 3D, frame interpolation.
+# ═══════════════════════════════════════════════════════════════
+
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.18
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# DB & Auth
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+bcrypt>=4.2.0
+python-jose>=3.3.0
+
+# Media
+numpy>=1.26.0,<2.2.0
+Pillow>=11.1.0
+opencv-python-headless>=4.10.0
+ffmpeg-python>=0.2.0
+scipy>=1.14.0
+
+# Minimal AI (CPU-only torch)
+torch>=2.6.0
+torchvision>=0.21.0
+onnxruntime>=1.20.0
+easyocr>=1.7.0
+
+# Utils
+requests>=2.32.0
+tqdm>=4.67.0
+prometheus-fastapi-instrumentator>=7.0.0
