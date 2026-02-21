@@ -34,3 +34,17 @@ def iter_models():
     for category, models in MODELS_MANIFEST.items():
         for model in models:
             yield category, model
+
+
+import json
+from pathlib import Path
+
+
+def ensure_models_manifest_synced(models_root: str | Path = r"D:\PLAYE\models") -> Path:
+    """Create/sync models_manifest.json in models storage for startup health guarantees."""
+    root = Path(models_root)
+    root.mkdir(parents=True, exist_ok=True)
+    manifest_path = root / "models_manifest.json"
+    payload = {"models": MODELS_MANIFEST}
+    manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return manifest_path
