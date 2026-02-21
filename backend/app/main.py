@@ -29,6 +29,7 @@ except ImportError:
     system_router = None
 
 from app.db.database import create_tables
+from app.core.models_config import ensure_models_manifest_synced
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -61,7 +62,9 @@ if system_router:
 @app.on_event("startup")
 async def startup_event():
     create_tables()
+    manifest_path = ensure_models_manifest_synced()
     logger.info("PLAYE Studio Pro: Unified Backend started")
+    logger.info("Models manifest synced: %s", manifest_path)
 
 
 @app.get("/")

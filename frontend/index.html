@@ -68,6 +68,9 @@
           <canvas id="ai-overlay"></canvas>
           <canvas id="photo-canvas" style="display:none;"></canvas>
           <canvas id="compare-canvas" style="display:none;"></canvas>
+          <canvas id="compare-original" class="compare-layer" style="display:none;"></canvas>
+          <canvas id="compare-result" class="compare-layer" style="display:none;"></canvas>
+          <input type="range" id="split-slider" min="0" max="100" value="50" class="compare-split-slider" style="display:none;"/>
           <div class="motion-indicator" id="motion-indicator">● LIVE TRACKING</div>
         </div>
         <div class="viewer__toolbar video-only" id="video-toolbar">
@@ -153,10 +156,11 @@
 
         <div class="control-group tab-panel tab-ai">
           <h2>SAM 2 Tracking</h2>
-          <div class="button-row"><button id="ai-face-detect" class="btn-ghost" data-requires-model="face_id">👤 Лица</button><button id="ai-object-detect" class="btn-ghost" data-requires-model="yolov8">🔍 Объекты</button></div>
+          <div class="button-row"><button id="ai-face-detect" class="btn-ghost" data-requires-model="face_id">👤 Лица</button><button id="ai-detect-btn" class="btn-ghost" data-requires-model="yolov10">🔍 Объекты</button></div>
           <div id="ai-face-list" class="ai-list"></div><div id="ai-object-list" class="ai-list"></div>
           <label class="toggle"><input type="checkbox" id="ai-face-marker-toggle" checked/> Маски лиц</label>
           <label class="toggle"><input type="checkbox" id="ai-object-marker-toggle" checked/> Маски объектов</label>
+          <button id="ai-ocr-btn" class="btn-ghost" data-requires-model="paddle_ocr">🔤 OCR</button>
           <span id="ai-status" class="muted"></span>
           <hr class="sep"/>
           <h2>Track</h2>
