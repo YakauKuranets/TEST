@@ -18,6 +18,8 @@ import { createClipBlueprint } from "./blueprints/clip.js";
 import { createAdvancedTimelineBlueprint } from "./blueprints/advancedTimeline.js";
 import { createMotionTrackingAndEffectsBlueprint } from "./blueprints/motionTrackingAndEffects.js";
 import { createAiHubBlueprint } from "./blueprints/aiHub.js";
+import { bindWienerDeblur } from "./wiener.js";
+import { initSplitView } from "./split-view.js";
 
 // Helper: safe getElementById (returns element or null without crash)
 const $id = (id) => document.getElementById(id);
@@ -42,6 +44,9 @@ const elements = {
   aiOverlay: $id('ai-overlay'),
   photoCanvas: $id('photo-canvas'),
   compareCanvas: $id('compare-canvas'),
+  compareOriginalCanvas: $id('compare-original'),
+  compareResultCanvas: $id('compare-result'),
+  splitSlider: $id('split-slider'),
   captureCanvas: $id('capture'),
   viewerSurface: $id('viewer-surface'),
   motionIndicator: $id('motion-indicator'),
@@ -132,7 +137,7 @@ const elements = {
 
   // AI panel
   aiFaceDetectButton: $id('ai-face-detect'),
-  aiObjectDetectButton: $id('ai-object-detect'),
+  aiObjectDetectButton: $id('ai-detect-btn') || $id('ai-object-detect'),
   aiFaceList: $id('ai-face-list'),
   aiObjectList: $id('ai-object-list'),
   aiFaceMarkerToggle: $id('ai-face-marker-toggle'),
@@ -247,6 +252,20 @@ const api = {
     const resp = await fetch(API('/api/system/models-status'));
     const data = await resp.json();
     return Boolean(data?.[modelId]);
+  },
+  applyWienerDeblur: async (base64Image, length, angle) => {
+    const resp = await fetch(API('/api/forensic/deblur'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64_image: base64Image, length: Number(length), angle: Number(angle) }),
+    });
+    if (!resp.ok) {
+      const payload = await resp.json().catch(() => ({}));
+      throw new Error(payload?.detail || payload?.error || `HTTP ${resp.status}`);
+    }
+    const payload = await resp.json();
+    if (!payload?.result) throw new Error('Ответ API не содержит result');
+    return payload.result;
   }
 };
 
@@ -659,7 +678,6 @@ window.addEventListener('DOMContentLoaded', () => {
   elements.trackStartBtn?.addEventListener('click', () => actions.toggleAutoZoom());
 
   // Killer features
-  elements.blurFixBtn?.addEventListener('click', () => actions.runMotionBlurFix());
   elements.elaBtn?.addEventListener('click', () => actions.runELA());
   elements.autoAnalyzeBtn?.addEventListener('click', () => actions.runAutoAnalyze());
 
@@ -787,6 +805,16 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   wireStabilization();
 
+  bindWienerDeblur({ elements, state, actions, api });
+  initSplitView({ elements });
+  setupOcrCropTool();
+  initTrackBindings();
+  const detectBtn = document.getElementById('ai-detect-btn') || elements.aiObjectDetectButton;
+  detectBtn?.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); runYoloDetect().catch((err) => actions.recordLog('ai-error', err.message)); }, true);
+  elements.aiFaceDetectButton?.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); runFaceRestore().catch((err) => actions.recordLog('ai-error', err.message)); }, true);
+  const ocrBtn = document.getElementById('ai-ocr-btn') || document.getElementById('ai-face-marker-toggle');
+  ocrBtn?.addEventListener('click', (e) => { e.preventDefault(); runPaddleOcr().catch((err) => actions.recordLog('ai-error', err.message)); });
+
   // ColorGrading wiring — exposure/contrast/etc sliders already in quality blueprint
   // The colorGrading engine provides apply() for canvas pipeline integration
   // It auto-hooks into the quality renderFrame pipeline via state.colorGradingAPI.apply()
@@ -880,6 +908,175 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) { actions.recordLog('ai-error', err.name === 'AbortError' ? 'Превышено время ожидания' : err.message); }
   };
+
+
+
+  const getCanvasBase64 = (canvas) => {
+    const data = canvas.toDataURL('image/png');
+    return String(data).split(',')[1] || '';
+  };
+
+  const runYoloDetect = async () => {
+    const base64 = getCanvasBase64(elements.canvas);
+    const resp = await fetch(API('/api/ai/detect'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64: base64 }),
+    });
+    const data = await resp.json();
+    const detections = Array.isArray(data?.detections) ? data.detections : [];
+    if (elements.aiOverlay) {
+      const overlay = elements.aiOverlay;
+      overlay.width = elements.canvas.width;
+      overlay.height = elements.canvas.height;
+      const ctx = overlay.getContext('2d');
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      ctx.strokeStyle = '#ff3b30';
+      ctx.fillStyle = '#ff3b30';
+      ctx.lineWidth = 2;
+      ctx.font = '12px Inter, sans-serif';
+      detections.forEach((det) => {
+        const [x1, y1, x2, y2] = det.bbox || [0, 0, 0, 0];
+        ctx.strokeRect(x1, y1, Math.max(1, x2 - x1), Math.max(1, y2 - y1));
+        const label = `${det.class || 'obj'} ${Math.round((det.conf || 0) * 100)}%`;
+        ctx.fillText(label, x1 + 2, Math.max(12, y1 - 4));
+      });
+    }
+    actions.recordLog('ai', `YOLO: Найдено ${detections.length} объектов`);
+  };
+
+  state.ocrCrop = null;
+  const setupOcrCropTool = () => {
+    const canvas = elements.canvas;
+    if (!canvas) return;
+    let drag = null;
+    const toLocal = (evt) => {
+      const r = canvas.getBoundingClientRect();
+      const sx = canvas.width / Math.max(1, r.width);
+      const sy = canvas.height / Math.max(1, r.height);
+      return { x: (evt.clientX - r.left) * sx, y: (evt.clientY - r.top) * sy };
+    };
+    canvas.addEventListener('mousedown', (evt) => { if (state.viewMode === 'photo') drag = toLocal(evt); });
+    canvas.addEventListener('mouseup', (evt) => {
+      if (!drag) return;
+      const end = toLocal(evt);
+      const x = Math.round(Math.min(drag.x, end.x));
+      const y = Math.round(Math.min(drag.y, end.y));
+      const w = Math.round(Math.abs(end.x - drag.x));
+      const h = Math.round(Math.abs(end.y - drag.y));
+      drag = null;
+      if (w < 2 || h < 2) return;
+      state.ocrCrop = { x, y, w, h };
+      if (elements.aiOverlay) {
+        const ov = elements.aiOverlay;
+        ov.width = canvas.width; ov.height = canvas.height;
+        const ctx = ov.getContext('2d');
+        ctx.clearRect(0, 0, ov.width, ov.height);
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+      }
+    });
+  };
+
+  const runPaddleOcr = async () => {
+    const src = elements.canvas;
+    const crop = state.ocrCrop;
+    const work = document.createElement('canvas');
+    const wx = crop ? crop.w : src.width;
+    const hy = crop ? crop.h : src.height;
+    work.width = Math.max(1, wx);
+    work.height = Math.max(1, hy);
+    const wctx = work.getContext('2d');
+    if (crop) {
+      wctx.drawImage(src, crop.x, crop.y, crop.w, crop.h, 0, 0, work.width, work.height);
+    } else {
+      wctx.drawImage(src, 0, 0);
+    }
+    const base64 = getCanvasBase64(work);
+    const resp = await fetch(API('/api/ai/ocr'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64: base64 }),
+    });
+    const data = await resp.json();
+    const txt = data?.text || '';
+    const conf = Math.round((Number(data?.confidence || 0)) * 100);
+    actions.recordLog('OCR', `Распознан текст: "${txt}" (${conf}%)`);
+  };
+
+  const runFaceRestore = async () => {
+    const btn = elements.aiFaceDetectButton;
+    const oldText = btn?.innerText || '👤 Лица';
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Обработка...'; }
+    try {
+      const base64 = getCanvasBase64(elements.canvas);
+      const resp = await fetch(API('/api/ai/face-restore'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_base64: base64 }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.detail?.error || data?.detail || 'face restore failed');
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve; img.onerror = reject; img.src = `data:image/png;base64,${data.result}`;
+      });
+      const ctx = elements.canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, elements.canvas.width, elements.canvas.height);
+      actions.recordLog('ai', 'Face Restore: лицо восстановлено');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerText = oldText; }
+    }
+  };
+
+  let trackStateId = null;
+  const initTrackBindings = () => {
+    elements.canvas?.addEventListener('click', async (evt) => {
+      if (!state.currentVideoFile) return;
+      if (!trackStateId) {
+        const initResp = await fetch(API('/api/ai/track-init'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video_id: state.currentVideoFile.name || 'video' }) });
+        const initData = await initResp.json();
+        trackStateId = initData.inference_state_id;
+      }
+      const r = elements.canvas.getBoundingClientRect();
+      const sx = elements.canvas.width / Math.max(1, r.width);
+      const sy = elements.canvas.height / Math.max(1, r.height);
+      const x = Math.round((evt.clientX - r.left) * sx);
+      const y = Math.round((evt.clientY - r.top) * sy);
+      await fetch(API('/api/ai/track-add-prompt'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inference_state_id: trackStateId, frame_num: Math.floor((elements.video?.currentTime || 0) * 30), point: [x, y] }) });
+    });
+
+    elements.propagateBtn?.addEventListener('click', async () => {
+      if (!trackStateId) return;
+      await fetch(API('/api/ai/track-propagate'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inference_state_id: trackStateId, frames: 3 }) });
+      actions.recordLog('ai', 'SAM2: Пропагация маски запущена');
+    });
+
+    elements.video?.addEventListener('timeupdate', async () => {
+      if (!trackStateId || !elements.aiOverlay) return;
+      const frame = Math.floor((elements.video.currentTime || 0) * 30);
+      const resp = await fetch(API(`/api/ai/track-mask/${trackStateId}/${frame}`));
+      const mask = await resp.json();
+      const poly = mask?.polygon || [];
+      const ov = elements.aiOverlay;
+      ov.width = elements.canvas.width; ov.height = elements.canvas.height;
+      const ctx = ov.getContext('2d');
+      ctx.clearRect(0, 0, ov.width, ov.height);
+      if (poly.length >= 3) {
+        ctx.fillStyle = 'rgba(52,211,153,0.25)';
+        ctx.strokeStyle = 'rgba(16,185,129,0.9)';
+        ctx.beginPath();
+        ctx.moveTo(poly[0][0], poly[0][1]);
+        for (let i = 1; i < poly.length; i += 1) ctx.lineTo(poly[i][0], poly[i][1]);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+      }
+    });
+
+    window.addEventListener('beforeunload', async () => {
+      if (trackStateId) await fetch(API(`/api/ai/track-cleanup/${trackStateId}`), { method: 'DELETE' });
+    });
+  };
+
 
   // Colorize
   const runColorize = async () => {

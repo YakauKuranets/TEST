@@ -19,7 +19,8 @@
     "test:enterprise-report-filters": "python3 scripts/test-enterprise-report-filters.py",
     "test:rbac-route-matching": "python3 scripts/test-rbac-route-matching.py",
     "test:enterprise-report-schema": "python3 scripts/test-enterprise-report-schema.py",
-    "test:e2e": "node scripts/test_e2e.js"
+    "test:e2e": "node scripts/test_e2e.js",
+    "test": "node --test --experimental-default-type=module frontend/tests/ui_wiener.spec.js frontend/tests/level2_ui.test.mjs frontend/tests/ui_phase1.spec.js frontend/tests/vision_ui.test.js frontend/tests/authenticity_ui.test.js"
   },
   "build": {
     "appId": "com.playe.photolab",
