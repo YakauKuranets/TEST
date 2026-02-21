@@ -1,0 +1,85 @@
+{
+  "version": "2.0.0",
+  "models": {
+    "restoreformer": {
+      "name": "RestoreFormer", "version": "2.0.0",
+      "description": "Facial enhancement and restoration",
+      "size": 2147483648, "filename": "restoreformer.pth",
+      "url": "https://github.com/wzhouxiff/RestoreFormer/releases/download/v1.0.0/RestoreFormer.pth",
+      "checksum": "b931a2461cd90d5c4702183987bcb22cbb3818d764ebdbb3bf7bf0e549097b20",
+      "required": true, "category": "face_enhancement"
+    },
+    "realesrgan": {
+      "name": "Real-ESRGAN", "version": "3.0.0",
+      "description": "Super-resolution upscaling (2x/4x/8x)",
+      "size": 524288000, "filename": "realesrgan.pth",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+      "checksum": "69f3693a67d36e4fbf2df19157a1f981dffbdc04aa5be7a466183001b2b304ca",
+      "required": true, "category": "super_resolution"
+    },
+    "nafnet": {
+      "name": "NAFNet", "version": "1.0.0",
+      "description": "Neural denoising (light/medium/heavy)",
+      "size": 419430400, "filename": "nafnet.pth",
+      "url": "https://github.com/megvii-research/NAFNet/releases/download/v1.0/nafnet-siddd.pth",
+      "checksum": "3ff2a7a4568bc0c98e402801ea51a127e842fc33fe3d7fb0cf9b7eb171d4b5ec",
+      "required": false, "category": "denoising"
+    },
+    "sd_inpaint": {
+      "name": "Stable Diffusion Inpaint", "version": "2.0.0",
+      "description": "Context-aware fill for damaged/missing areas",
+      "size": 4294967296, "filename": "sd_inpaint",
+      "url": "https://huggingface.co/stabilityai/stable-diffusion-2-inpainting",
+      "required": false, "category": "inpainting"
+    },
+    "depth_anything": {
+      "name": "Depth Anything v2", "version": "2.0.0",
+      "description": "Monocular depth estimation for 3D analysis",
+      "size": 390000000, "filename": "depth_anything_v2",
+      "url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Base",
+      "required": false, "category": "depth_estimation"
+    },
+    "segment_anything": {
+      "name": "SAM 2 (Segment Anything)", "version": "2.1.0",
+      "description": "One-click object segmentation and isolation",
+      "size": 2500000000, "filename": "sam2",
+      "url": "https://huggingface.co/facebook/sam2-hiera-large",
+      "required": false, "category": "segmentation"
+    },
+    "ddcolor": {
+      "name": "DDColor", "version": "1.0.0",
+      "description": "Automatic colourisation of B&W photographs",
+      "size": 520000000, "filename": "ddcolor",
+      "url": "https://huggingface.co/piddnad/DDColor",
+      "required": false, "category": "colorization"
+    },
+    "ocr": {
+      "name": "PaddleOCR", "version": "4.0.0",
+      "description": "Text detection and recognition (licence plates, signs, documents)",
+      "size": 150000000, "filename": "paddleocr",
+      "url": "https://github.com/PaddlePaddle/PaddleOCR",
+      "required": false, "category": "text_recognition"
+    },
+    "face_id": {
+      "name": "InsightFace", "version": "1.0.0",
+      "description": "Face identification, verification, age/gender estimation",
+      "size": 680000000, "filename": "insightface",
+      "url": "https://github.com/deepinsight/insightface/releases",
+      "required": false, "category": "face_identification"
+    },
+    "frame_interpolator": {
+      "name": "RIFE / IFRNet", "version": "4.22.0",
+      "description": "Frame interpolation for slow-motion and FPS boost",
+      "size": 120000000, "filename": "rife",
+      "url": "https://github.com/megvii-research/ECCV2022-RIFE",
+      "required": false, "category": "frame_interpolation"
+    },
+    "scene_3d": {
+      "name": "3D Gaussian Splatting", "version": "1.0.0",
+      "description": "3D scene reconstruction from multiple photos/video",
+      "size": 50000000, "filename": "scene3d",
+      "url": "https://github.com/graphdeco-inria/gaussian-splatting",
+      "required": false, "category": "3d_reconstruction"
+    }
+  }
+}
